@@ -6,7 +6,8 @@
     "newLine": "lf",
     "strict": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true
   },
   "files" :[
     "src/index.ts"
