@@ -9,6 +9,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "files" :[
-    "hca.ts"
-  ]
+    "src/index.ts"
+  ],
+  "include": ["src/**/*"]
 }
