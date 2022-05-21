@@ -105,12 +105,13 @@ class HCAFrame {
     }
   }
 
-  /// <summary>
-  /// Scales an ATH curve to the specified frequency.
-  /// </summary>
-  /// <param name="frequency">The frequency to scale the curve to.</param>
-  /// <returns>The scaled ATH curve</returns>
-  /// <remarks>The original ATH curve is for a frequency of 41856 Hz.</remarks>
+  /**
+   * Scales an ATH curve to the specified frequency.
+   *
+   * The original ATH curve is for a frequency of 41856 Hz.
+   * @param frequency The frequency to scale the curve to.
+   * @returns The scaled ATH curve
+   */
   private static ScaleAthCurve(frequency: number): Uint8Array {
     var ath = new Uint8Array(SamplesPerSubFrame);
 

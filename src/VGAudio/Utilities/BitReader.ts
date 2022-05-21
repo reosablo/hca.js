@@ -99,16 +99,17 @@ class BitReader {
 }
 
 namespace BitReader {
-  /// <summary>
-  /// Specifies the bias of an offset binary value. A positive bias can represent one more
-  /// positive value than negative value, and a negative bias can represent one more
-  /// negative value than positive value.
-  /// </summary>
-  /// <remarks>Example:
-  /// A 4-bit offset binary value with a positive bias can store
-  /// the values 8 through -7 inclusive.
-  /// A 4-bit offset binary value with a negative bias can store
-  /// the values 7 through -8 inclusive.</remarks>
+  /**
+   * Specifies the bias of an offset binary value. A positive bias can represent one more
+   * positive value than negative value, and a negative bias can represent one more
+   * negative value than positive value.
+   *
+   * Example:
+   * A 4-bit offset binary value with a positive bias can store
+   * the values 8 through -7 inclusive.
+   * A 4-bit offset binary value with a negative bias can store
+   * the values 7 through -8 inclusive.
+   */
   export enum OffsetBias {
     Positive = 1,
     Negative = 0,

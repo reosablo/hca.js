@@ -1190,11 +1190,12 @@ class Mdct {
                 dctOut[i];
         }
     }
-    /// <summary>
-    /// Does a Type-4 DCT.
-    /// </summary>
-    /// <param name="input">The input array containing the time or frequency-domain samples</param>
-    /// <param name="output">The output array that will contain the transformed time or frequency-domain samples</param>
+    /**
+     * Does a Type-4 DCT.
+     *
+     * @param input The input array containing the time or frequency-domain samples
+     * @param output The output array that will contain the transformed time or frequency-domain samples
+     */
     Dct4(input, output) {
         let shuffleTable = Mdct.ShuffleTables[this.MdctBits];
         let sinTable = Mdct.SinTables[this.MdctBits];
@@ -1262,11 +1263,12 @@ class Mdct {
         return table;
     }
     // ReSharper disable once UnusedMember.Local
-    /// <summary>
-    /// Does a Type-4 DCT. Intended for reference.
-    /// </summary>
-    /// <param name="input">The input array containing the time or frequency-domain samples</param>
-    /// <param name="output">The output array that will contain the transformed time or frequency-domain samples</param>
+    /**
+     * Does a Type-4 DCT. Intended for reference.
+     *
+     * @param input The input array containing the time or frequency-domain samples
+     * @param output The output array that will contain the transformed time or frequency-domain samples
+     */
     Dct4Slow(input, output) {
         for (let k = 0; k < this.MdctSize; k++) {
             let sample = 0;
@@ -1402,12 +1404,13 @@ class HCAFrame {
                 return new Array(channelsPerTrack).fill(HCAChannelType$1);
         }
     }
-    /// <summary>
-    /// Scales an ATH curve to the specified frequency.
-    /// </summary>
-    /// <param name="frequency">The frequency to scale the curve to.</param>
-    /// <returns>The scaled ATH curve</returns>
-    /// <remarks>The original ATH curve is for a frequency of 41856 Hz.</remarks>
+    /**
+     * Scales an ATH curve to the specified frequency.
+     *
+     * The original ATH curve is for a frequency of 41856 Hz.
+     * @param frequency The frequency to scale the curve to.
+     * @returns The scaled ATH curve
+     */
     static ScaleAthCurve(frequency) {
         var ath = new Uint8Array(SamplesPerSubFrame);
         let acc = 0;

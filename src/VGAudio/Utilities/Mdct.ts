@@ -102,11 +102,12 @@ class Mdct {
     }
   }
 
-  /// <summary>
-  /// Does a Type-4 DCT.
-  /// </summary>
-  /// <param name="input">The input array containing the time or frequency-domain samples</param>
-  /// <param name="output">The output array that will contain the transformed time or frequency-domain samples</param>
+  /**
+   * Does a Type-4 DCT.
+   *
+   * @param input The input array containing the time or frequency-domain samples
+   * @param output The output array that will contain the transformed time or frequency-domain samples
+   */
   private Dct4(input: Float64Array, output: Float64Array): void {
     let shuffleTable = Mdct.ShuffleTables[this.MdctBits];
     let sinTable = Mdct.SinTables[this.MdctBits];
@@ -188,11 +189,12 @@ class Mdct {
   }
 
   // ReSharper disable once UnusedMember.Local
-  /// <summary>
-  /// Does a Type-4 DCT. Intended for reference.
-  /// </summary>
-  /// <param name="input">The input array containing the time or frequency-domain samples</param>
-  /// <param name="output">The output array that will contain the transformed time or frequency-domain samples</param>
+  /**
+   * Does a Type-4 DCT. Intended for reference.
+   *
+   * @param input The input array containing the time or frequency-domain samples
+   * @param output The output array that will contain the transformed time or frequency-domain samples
+   */
   private Dct4Slow(input: Float64Array, output: Float64Array): void {
     for (let k = 0; k < this.MdctSize; k++) {
       let sample = 0;
