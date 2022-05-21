@@ -1,5 +1,5 @@
 #!/bin/bash
-tsc || exit $?
+npm run build || exit $?
 cat << "EOF" | node -
   const fs = require("fs");
   let html = fs.readFileSync("hca.html", "utf-8");

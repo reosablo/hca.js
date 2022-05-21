@@ -1,14 +1,5 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var _a, _b;
-export class HCAInfo {
+class HCAInfo {
     constructor(hca, changeMask = false, encrypt = false) {
         this.version = "";
         this.dataOffset = 0;
@@ -156,9 +147,7 @@ export class HCAInfo {
                     this.compDec.MinResolution = p.getUint8(ftell + 6);
                     this.compDec.MaxResolution = p.getUint8(ftell + 7);
                     this.compDec.TotalBandCount = p.getUint8(ftell + 8);
-                    +1;
                     this.compDec.BaseBandCount = p.getUint8(ftell + 9);
-                    +1;
                     let a = p.getUint8(ftell + 10);
                     this.compDec.TrackCount = HCAUtilFunc.GetHighNibble(a);
                     this.compDec.ChannelConfig = HCAUtilFunc.GetLowNibble(a);
@@ -480,7 +469,7 @@ class HCAUtilFunc {
     }
 }
 HCAUtilFunc.SignedNibbles = [0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, -1];
-export class HCA {
+class HCA {
     constructor() {
     }
     static decrypt(hca, key1, key2) {
@@ -2350,219 +2339,205 @@ class HCATaskQueue {
             throw new Error("the reply to be sent must not have the same origin as the task queue");
         this.postMessage(task, task.transferList); // always use transferring to send back arguments
     }
-    sendNextTask() {
-        return __awaiter(this, void 0, void 0, function* () {
-            let task = this.queue.shift();
-            if (task == null) {
-                this.isIdle = true;
+    async sendNextTask() {
+        let task = this.queue.shift();
+        if (task == null) {
+            this.isIdle = true;
+        }
+        else {
+            this.isIdle = false;
+            // apply hook first
+            const registered = this.callbacks[task.taskID];
+            const taskHook = registered != null && registered.hook != null && registered.hook.task != null
+                ? registered.hook.task
+                : undefined;
+            if (taskHook != null)
+                try {
+                    task = await taskHook(task);
+                }
+                catch (e) {
+                    task.errMsg = `[${this.origin}] error when applying hook `
+                        + `before executing cmd ${task.cmd} from ${task.origin}`;
+                    if (typeof e === "string" || e instanceof Error)
+                        task.errMsg += "\n" + e.toString();
+                    task.isDummy = true;
+                }
+            // send task
+            if (task.isDummy) {
+                if (!task.hasErr && !task.hasResult)
+                    task.result = null;
+                const ev = new MessageEvent("message", { data: task }); // not actually sending, use a fake reply
+                this.msgHandler(ev); // won't await
             }
             else {
-                this.isIdle = false;
-                // apply hook first
-                const registered = this.callbacks[task.taskID];
-                const taskHook = registered != null && registered.hook != null && registered.hook.task != null
-                    ? registered.hook.task
-                    : undefined;
-                if (taskHook != null)
-                    try {
-                        task = yield taskHook(task);
-                    }
-                    catch (e) {
-                        task.errMsg = `[${this.origin}] error when applying hook `
-                            + `before executing cmd ${task.cmd} from ${task.origin}`;
-                        if (typeof e === "string" || e instanceof Error)
-                            task.errMsg += "\n" + e.toString();
-                        task.isDummy = true;
-                    }
-                // send task
-                if (task.isDummy) {
-                    if (!task.hasErr && !task.hasResult)
-                        task.result = null;
-                    const ev = new MessageEvent("message", { data: task }); // not actually sending, use a fake reply
-                    this.msgHandler(ev); // won't await
-                }
-                else {
-                    this.sendTask(task);
-                }
+                this.sendTask(task);
             }
-        });
+        }
     }
     get isAlive() {
         return this._isAlive;
     }
     // these following two methods/functions are supposed to be callbacks
-    msgHandler(ev) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const task = HCATask.recreate(ev.data);
-                if (task.origin !== this.origin) {
-                    // incoming cmd to execute
+    async msgHandler(ev) {
+        try {
+            const task = HCATask.recreate(ev.data);
+            if (task.origin !== this.origin) {
+                // incoming cmd to execute
+                try {
+                    task.result = await this.taskHandler(task);
+                }
+                catch (e) {
+                    // it's observed that Firefox refuses to postMessage an Error object:
+                    // "DataCloneError: The object could not be cloned."
+                    // (observed in Firefox 97, not clear about other versions)
+                    // Chrome doesn't seem to have this problem,
+                    // however, in order to keep compatible with Firefox,
+                    // we still have to avoid posting an Error object
+                    task.errMsg = `[${this.origin}] error when executing cmd ${task.cmd} from ${task.origin}`;
+                    if (typeof e === "string" || e instanceof Error)
+                        task.errMsg += "\n" + e.toString();
+                }
+                if (task.taskID != HCATaskQueue.discardReplyTaskID)
                     try {
-                        task.result = yield this.taskHandler(task);
+                        this.sendReply(task);
                     }
                     catch (e) {
-                        // it's observed that Firefox refuses to postMessage an Error object:
-                        // "DataCloneError: The object could not be cloned."
-                        // (observed in Firefox 97, not clear about other versions)
-                        // Chrome doesn't seem to have this problem,
-                        // however, in order to keep compatible with Firefox,
-                        // we still have to avoid posting an Error object
-                        task.errMsg = `[${this.origin}] error when executing cmd ${task.cmd} from ${task.origin}`;
+                        console.error(`[${this.origin}] sendReply failed.`, e);
+                        task.errMsg = (task.errMsg == null ? "" : task.errMsg + "\n\n") + "postMessage from Worker failed";
+                        if (typeof e === "string" || e instanceof Error)
+                            task.errMsg += "\n" + e.toString();
+                        // try again
+                        this.sendReply(task); // if it throws, just let it throw
+                    }
+            }
+            else {
+                // receiving cmd result
+                // find & unregister callback
+                const registered = this.callbacks[task.taskID];
+                delete this.callbacks[task.taskID];
+                // apply hook
+                let result = task.hasResult ? task.result : undefined;
+                const hook = registered.hook;
+                if (hook != null)
+                    try {
+                        if (task.hasErr && hook.error != null)
+                            await hook.error(task.errMsg);
+                        else if (task.hasResult && hook.result != null)
+                            result = await hook.result(task.result);
+                    }
+                    catch (e) {
+                        if (!task.hasErr)
+                            task.errMsg = "";
+                        task.errMsg += `[${this.origin}] error when applying hook `
+                            + `after executing cmd ${task.cmd} from ${task.origin}`;
                         if (typeof e === "string" || e instanceof Error)
                             task.errMsg += "\n" + e.toString();
                     }
-                    if (task.taskID != HCATaskQueue.discardReplyTaskID)
-                        try {
-                            this.sendReply(task);
-                        }
-                        catch (e) {
-                            console.error(`[${this.origin}] sendReply failed.`, e);
-                            task.errMsg = (task.errMsg == null ? "" : task.errMsg + "\n\n") + "postMessage from Worker failed";
-                            if (typeof e === "string" || e instanceof Error)
-                                task.errMsg += "\n" + e.toString();
-                            // try again
-                            this.sendReply(task); // if it throws, just let it throw
-                        }
+                // settle promise
+                if (task.hasErr) {
+                    registered.reject(task.errMsg);
                 }
-                else {
-                    // receiving cmd result
-                    // find & unregister callback
-                    const registered = this.callbacks[task.taskID];
-                    delete this.callbacks[task.taskID];
-                    // apply hook
-                    let result = task.hasResult ? task.result : undefined;
-                    const hook = registered.hook;
-                    if (hook != null)
-                        try {
-                            if (task.hasErr && hook.error != null)
-                                yield hook.error(task.errMsg);
-                            else if (task.hasResult && hook.result != null)
-                                result = yield hook.result(task.result);
-                        }
-                        catch (e) {
-                            if (!task.hasErr)
-                                task.errMsg = "";
-                            task.errMsg += `[${this.origin}] error when applying hook `
-                                + `after executing cmd ${task.cmd} from ${task.origin}`;
-                            if (typeof e === "string" || e instanceof Error)
-                                task.errMsg += "\n" + e.toString();
-                        }
-                    // settle promise
-                    if (task.hasErr) {
-                        registered.reject(task.errMsg);
-                    }
-                    else if (task.hasResult) {
-                        registered.resolve(result);
-                    }
-                    else
-                        throw new Error(`task (origin=${task.origin} taskID=${task.taskID} cmd=${task.cmd}) `
-                            + `has neither error nor result`); // should never happen
-                    // start next task
-                    yield this.sendNextTask();
+                else if (task.hasResult) {
+                    registered.resolve(result);
                 }
+                else
+                    throw new Error(`task (origin=${task.origin} taskID=${task.taskID} cmd=${task.cmd}) `
+                        + `has neither error nor result`); // should never happen
+                // start next task
+                await this.sendNextTask();
+            }
+        }
+        catch (e) {
+            // irrecoverable error
+            await this.errHandler(e);
+        }
+    }
+    async errHandler(data) {
+        // irrecoverable error
+        if (this._isAlive) {
+            // print error message
+            console.error(`[${this.origin}] destroying background worker on irrecoverable error`, data);
+            // destroy background worker
+            try {
+                await this.destroy();
             }
             catch (e) {
-                // irrecoverable error
-                yield this.errHandler(e);
+                console.error(`[${this.origin}] error when trying to destroy()`, e);
             }
-        });
-    }
-    errHandler(data) {
-        return __awaiter(this, void 0, void 0, function* () {
-            // irrecoverable error
-            if (this._isAlive) {
-                // print error message
-                console.error(`[${this.origin}] destroying background worker on irrecoverable error`, data);
-                // destroy background worker
+            // after destroy, mark isAlive as false (otherwise sendCmd will fail)
+            this._isAlive = false;
+            // reject all pending promises
+            for (let taskID in this.callbacks) {
+                const reject = this.callbacks[taskID].reject;
+                delete this.callbacks[taskID];
                 try {
-                    yield this.destroy();
+                    reject();
                 }
                 catch (e) {
-                    console.error(`[${this.origin}] error when trying to destroy()`, e);
-                }
-                // after destroy, mark isAlive as false (otherwise sendCmd will fail)
-                this._isAlive = false;
-                // reject all pending promises
-                for (let taskID in this.callbacks) {
-                    const reject = this.callbacks[taskID].reject;
-                    delete this.callbacks[taskID];
-                    try {
-                        reject();
-                    }
-                    catch (e) {
-                        console.error(`[${this.origin}] error rejecting taskID=${taskID}`, e);
-                    }
+                    console.error(`[${this.origin}] error rejecting taskID=${taskID}`, e);
                 }
             }
-        });
+        }
     }
-    getTransferConfig() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this._isAlive)
-                throw new Error("dead");
-            return yield this.execCmd("nop", [], { result: () => ({
-                    transferArgs: this.transferArgs,
-                    replyArgs: this.replyArgs
-                }) });
-        });
+    async getTransferConfig() {
+        if (!this._isAlive)
+            throw new Error("dead");
+        return await this.execCmd("nop", [], { result: () => ({
+                transferArgs: this.transferArgs,
+                replyArgs: this.replyArgs
+            }) });
     }
-    configTransfer(transferArgs, replyArgs) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this._isAlive)
-                throw new Error("dead");
-            return yield this.execCmd("nop", [], { result: () => {
-                    this.transferArgs = transferArgs ? true : false;
-                    this.replyArgs = replyArgs ? true : false;
-                } });
-        });
+    async configTransfer(transferArgs, replyArgs) {
+        if (!this._isAlive)
+            throw new Error("dead");
+        return await this.execCmd("nop", [], { result: () => {
+                this.transferArgs = transferArgs ? true : false;
+                this.replyArgs = replyArgs ? true : false;
+            } });
     }
-    execCmd(cmd, args, hook) {
-        return __awaiter(this, void 0, void 0, function* () {
-            // can be modified to simply wrap execMultiCmd but I just want to let it alone for no special reason
-            if (!this._isAlive)
-                throw new Error("dead");
+    async execCmd(cmd, args, hook) {
+        // can be modified to simply wrap execMultiCmd but I just want to let it alone for no special reason
+        if (!this._isAlive)
+            throw new Error("dead");
+        // assign new taskID
+        const taskID = this.getNextTaskID();
+        const task = new HCATask(this.origin, taskID, cmd, args, this.replyArgs);
+        // register callback
+        if (this.callbacks[taskID] != null)
+            throw new Error(`taskID=${taskID} is already occupied`);
+        const resultPromise = new Promise((resolve, reject) => this.callbacks[taskID] = { resolve: resolve, reject: reject,
+            hook: hook });
+        // append to command queue
+        this.queue.push(task);
+        // start executing tasks
+        if (this.isIdle)
+            await this.sendNextTask();
+        // return result
+        return await resultPromise;
+    }
+    async execMultiCmd(cmdList) {
+        // the point is to ensure "atomicity" between cmds
+        if (!this._isAlive)
+            throw new Error("dead");
+        let resultPromises = [];
+        for (let i = 0; i < cmdList.length; i++) {
             // assign new taskID
             const taskID = this.getNextTaskID();
-            const task = new HCATask(this.origin, taskID, cmd, args, this.replyArgs);
+            const listItem = cmdList[i];
+            const task = new HCATask(this.origin, taskID, listItem.cmd, listItem.args, this.replyArgs);
             // register callback
             if (this.callbacks[taskID] != null)
                 throw new Error(`taskID=${taskID} is already occupied`);
-            const resultPromise = new Promise((resolve, reject) => this.callbacks[taskID] = { resolve: resolve, reject: reject,
-                hook: hook });
+            resultPromises.push(new Promise((resolve, reject) => this.callbacks[taskID] = { resolve: resolve, reject: reject,
+                hook: listItem.hook }));
             // append to command queue
             this.queue.push(task);
-            // start executing tasks
-            if (this.isIdle)
-                yield this.sendNextTask();
-            // return result
-            return yield resultPromise;
-        });
-    }
-    execMultiCmd(cmdList) {
-        return __awaiter(this, void 0, void 0, function* () {
-            // the point is to ensure "atomicity" between cmds
-            if (!this._isAlive)
-                throw new Error("dead");
-            let resultPromises = [];
-            for (let i = 0; i < cmdList.length; i++) {
-                // assign new taskID
-                const taskID = this.getNextTaskID();
-                const listItem = cmdList[i];
-                const task = new HCATask(this.origin, taskID, listItem.cmd, listItem.args, this.replyArgs);
-                // register callback
-                if (this.callbacks[taskID] != null)
-                    throw new Error(`taskID=${taskID} is already occupied`);
-                resultPromises.push(new Promise((resolve, reject) => this.callbacks[taskID] = { resolve: resolve, reject: reject,
-                    hook: listItem.hook }));
-                // append to command queue
-                this.queue.push(task);
-            }
-            // start executing tasks
-            if (this.isIdle)
-                yield this.sendNextTask();
-            // return results
-            return yield Promise.all(resultPromises);
-        });
+        }
+        // start executing tasks
+        if (this.isIdle)
+            await this.sendNextTask();
+        // return results
+        return await Promise.all(resultPromises);
     }
     sendCmd(cmd, args) {
         // send cmd without registering callback
@@ -2572,33 +2547,29 @@ class HCATaskQueue {
         const task = new HCATask(this.origin, HCATaskQueue.discardReplyTaskID, cmd, args, false);
         this.sendTask(task);
     }
-    shutdown(forcibly = false) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this._isAlive) {
-                if (forcibly) {
-                    try {
-                        yield this.destroy();
-                    }
-                    catch (e) {
-                        console.error(`[${this.origin}] error when trying to forcibly shutdown.`, e);
-                    }
-                    this._isAlive = false;
+    async shutdown(forcibly = false) {
+        if (this._isAlive) {
+            if (forcibly) {
+                try {
+                    await this.destroy();
                 }
-                else
-                    yield this.execCmd("nop", [], { result: () => __awaiter(this, void 0, void 0, function* () {
-                            yield this.destroy();
-                            this._isAlive = false;
-                        }) });
+                catch (e) {
+                    console.error(`[${this.origin}] error when trying to forcibly shutdown.`, e);
+                }
+                this._isAlive = false;
             }
-        });
+            else
+                await this.execCmd("nop", [], { result: async () => {
+                        await this.destroy();
+                        this._isAlive = false;
+                    } });
+        }
     }
 }
 HCATaskQueue.maxTaskID = 256; // there's recursion in sendNextTask when making fake reply
 HCATaskQueue.discardReplyTaskID = -1;
 if (typeof document === "undefined") {
-    if (typeof onmessage === "undefined") {
-        // AudioWorklet
-    }
+    if (typeof onmessage === "undefined") ;
     else {
         // Web Worker
         const taskQueue = new HCATaskQueue("Background-HCAWorker", (msg, trans) => postMessage(msg, trans), (task) => {
@@ -2625,19 +2596,19 @@ if (typeof document === "undefined") {
     }
 }
 // create & control worker
-export class HCAWorker {
+class HCAWorker {
     constructor(selfUrl) {
         this.lastTick = 0;
         this.hcaWorker = new Worker(selfUrl, { type: "module" }); // setting type to "module" is currently bogus in Firefox
         this.selfUrl = selfUrl;
-        this.taskQueue = new HCATaskQueue("Main-HCAWorker", (msg, trans) => this.hcaWorker.postMessage(msg, trans), (task) => __awaiter(this, void 0, void 0, function* () {
+        this.taskQueue = new HCATaskQueue("Main-HCAWorker", (msg, trans) => this.hcaWorker.postMessage(msg, trans), async (task) => {
             switch (task.cmd) {
                 case "self-destruct": // doesn't seem to have a chance to be called
                     console.error(`hcaWorker requested to self-destruct`);
-                    yield this.taskQueue.shutdown(true);
+                    await this.taskQueue.shutdown(true);
                     break;
             }
-        }), () => this.hcaWorker.terminate());
+        }, () => this.hcaWorker.terminate());
         this.hcaWorker.onmessage = (msg) => this.taskQueue.msgHandler(msg);
         this.hcaWorker.onerror = (msg) => this.taskQueue.errHandler(msg);
         this.hcaWorker.onmessageerror = (msg) => this.taskQueue.errHandler(msg);
@@ -2645,99 +2616,75 @@ export class HCAWorker {
     get isAlive() {
         return this.taskQueue.isAlive;
     }
-    shutdown(forcibly = false) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this.taskQueue.isAlive)
-                yield this.taskQueue.shutdown(forcibly);
-        });
+    async shutdown(forcibly = false) {
+        if (this.taskQueue.isAlive)
+            await this.taskQueue.shutdown(forcibly);
     }
-    tick() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.taskQueue.execCmd("nop", []);
-            this.lastTick = new Date().getTime();
-        });
+    async tick() {
+        await this.taskQueue.execCmd("nop", []);
+        this.lastTick = new Date().getTime();
     }
-    tock(text = "") {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.taskQueue.execCmd("nop", []);
-            const duration = new Date().getTime() - this.lastTick;
-            console.log(`${text} took ${duration} ms`);
-            return duration;
-        });
+    async tock(text = "") {
+        await this.taskQueue.execCmd("nop", []);
+        const duration = new Date().getTime() - this.lastTick;
+        console.log(`${text} took ${duration} ms`);
+        return duration;
     }
-    static create(selfUrl) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (typeof selfUrl === "string")
-                selfUrl = new URL(selfUrl, document.baseURI);
-            else if (!(selfUrl instanceof URL))
-                throw new Error("selfUrl must be either string or URL");
-            // fetch & save hca.js as blob in advance, to avoid creating worker being blocked later, like:
-            // (I observed this problem in Firefox)
-            // creating HCAAudioWorkletHCAPlayer requires information from HCA, which is sample rate and channel count;
-            // however, fetching HCA (originally supposed to be progressive/streamed) blocks later request to fetch hca.js,
-            // so that HCAAudioWorkletHCAPlayer can only be created after finishing downloading the whole HCA,
-            // which obviously defeats the purpose of streaming HCA
-            const response = yield fetch(selfUrl.href);
-            // Firefox currently does not support ECMAScript modules in Worker,
-            // therefore we must strip all export declarations
-            const origText = yield response.text();
-            const convertedText = ("\n" + origText).replace(/((\n|;)[ \t]*)((export[ \t]+\{.*?\}[ \t]*;{0,1})+|(export[ \t]+))/g, "$1").slice(1);
-            const blob = new Blob([convertedText], { type: "text/javascript" });
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            const dataURI = yield new Promise((res) => {
-                reader.onloadend = function () {
-                    res(reader.result);
-                };
-            });
-            selfUrl = new URL(dataURI, document.baseURI);
-            return new HCAWorker(selfUrl);
+    static async create(selfUrl) {
+        if (typeof selfUrl === "string")
+            selfUrl = new URL(selfUrl, document.baseURI);
+        else if (!(selfUrl instanceof URL))
+            throw new Error("selfUrl must be either string or URL");
+        // fetch & save hca.js as blob in advance, to avoid creating worker being blocked later, like:
+        // (I observed this problem in Firefox)
+        // creating HCAAudioWorkletHCAPlayer requires information from HCA, which is sample rate and channel count;
+        // however, fetching HCA (originally supposed to be progressive/streamed) blocks later request to fetch hca.js,
+        // so that HCAAudioWorkletHCAPlayer can only be created after finishing downloading the whole HCA,
+        // which obviously defeats the purpose of streaming HCA
+        const response = await fetch(selfUrl.href);
+        // Firefox currently does not support ECMAScript modules in Worker,
+        // therefore we must strip all export declarations
+        const origText = await response.text();
+        const convertedText = ("\n" + origText).replace(/\bexport\s+{.*?};?/, "").slice(1);
+        const blob = new Blob([convertedText], { type: "text/javascript" });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        const dataURI = await new Promise((res) => {
+            reader.onloadend = function () {
+                res(reader.result);
+            };
         });
+        selfUrl = new URL(dataURI, document.baseURI);
+        return new HCAWorker(selfUrl);
     }
     // commands
-    getTransferConfig() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.getTransferConfig();
-        });
+    async getTransferConfig() {
+        return await this.taskQueue.getTransferConfig();
     }
-    configTransfer(transferArgs, replyArgs) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.configTransfer(transferArgs, replyArgs);
-        });
+    async configTransfer(transferArgs, replyArgs) {
+        return await this.taskQueue.configTransfer(transferArgs, replyArgs);
     }
-    fixHeaderChecksum(hca) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("fixHeaderChecksum", [hca]);
-        });
+    async fixHeaderChecksum(hca) {
+        return await this.taskQueue.execCmd("fixHeaderChecksum", [hca]);
     }
-    fixChecksum(hca) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("fixChecksum", [hca]);
-        });
+    async fixChecksum(hca) {
+        return await this.taskQueue.execCmd("fixChecksum", [hca]);
     }
-    decrypt(hca, key1, key2) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("decrypt", [hca, key1, key2]);
-        });
+    async decrypt(hca, key1, key2) {
+        return await this.taskQueue.execCmd("decrypt", [hca, key1, key2]);
     }
-    encrypt(hca, key1, key2) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("encrypt", [hca, key1, key2]);
-        });
+    async encrypt(hca, key1, key2) {
+        return await this.taskQueue.execCmd("encrypt", [hca, key1, key2]);
     }
-    addHeader(hca, sig, newData) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("addHeader", [hca, sig, newData]);
-        });
+    async addHeader(hca, sig, newData) {
+        return await this.taskQueue.execCmd("addHeader", [hca, sig, newData]);
     }
-    addCipherHeader(hca, cipherType) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("addCipherHeader", [hca, cipherType]);
-        });
+    async addCipherHeader(hca, cipherType) {
+        return await this.taskQueue.execCmd("addCipherHeader", [hca, cipherType]);
     }
-    decode(hca, mode = 32, loop = 0, volume = 1.0) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return yield this.taskQueue.execCmd("decode", [hca, mode, loop, volume]);
-        });
+    async decode(hca, mode = 32, loop = 0, volume = 1.0) {
+        return await this.taskQueue.execCmd("decode", [hca, mode, loop, volume]);
     }
 }
+
+export { HCA, HCAInfo, HCAWorker };

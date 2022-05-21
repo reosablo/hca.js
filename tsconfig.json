@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "es2015",
+    "target": "es2017",
     "module": "ES2015",
-    "lib": ["ES2015", "DOM"],
+    "lib": ["ES2017", "DOM"],
     "newLine": "lf",
     "strict": true,
     "esModuleInterop": true,
