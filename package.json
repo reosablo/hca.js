@@ -7,7 +7,8 @@
     "import": "./hca.js"
   },
   "scripts": {
-    "build": "rollup -c"
+    "build": "rollup -c",
+    "generate-standalone": "npm run build && node scripts/generate-standalone.mjs"
   },
   "devDependencies": {
     "rollup": "^2.74.1",
