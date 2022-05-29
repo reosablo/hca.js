@@ -12,7 +12,7 @@ if (typeof document === "undefined") {
     // Web Worker
     const taskQueue = new HCATaskQueue(
       "Background-HCAWorker",
-      (msg: any, trans: Transferable[]) => (postMessage as any)(msg, trans),
+      (msg: any, trans: Transferable[]) => postMessage(msg, trans),
       (task: HCATask) => {
         switch (task.cmd) {
           case "nop":

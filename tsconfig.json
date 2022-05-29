@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2017",
     "module": "ES2015",
-    "lib": ["ES2017", "DOM"],
+    "lib": ["ES2017", "WebWorker", "DOM"],
     "newLine": "lf",
     "strict": true,
     "esModuleInterop": true,
